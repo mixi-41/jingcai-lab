@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="竞彩实验室">
+  <rect width="512" height="512" rx="112" fill="#2563eb"/>
+  <circle cx="256" cy="256" r="184" fill="none" stroke="#dbeafe" stroke-width="18" opacity="0.55"/>
+  <text x="256" y="318" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="220" font-weight="700" fill="#ffffff">竞</text>
+  <circle cx="390" cy="126" r="26" fill="#93c5fd"/>
+</svg>

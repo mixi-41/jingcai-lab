@@ -1,0 +1,21 @@
+{
+  "name": "竞彩实验室 · 赔率研究记录器",
+  "short_name": "竞彩实验室",
+  "description": "本地优先的竞彩赔率记录器：粘贴识别、赛果结算、JSON/CSV 导出。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f7f8fa",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f8fa">
+  <meta name="description" content="本地优先的竞彩赔率研究记录器：粘贴识别、赛果结算、导出 CSV。">
+  <title>竞彩实验室 · 赔率研究记录器</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">竞</span>
+      <div>
+        <strong>竞彩实验室</strong>
+        <small>本地 · 赔率研究记录</small>
+      </div>
+    </div>
+    <span class="topbar-note">数据只在本机</span>
+  </header>
+
+  <main class="shell">
+    <section class="dashboard" aria-label="概览">
+      <article class="hero bento-card">
+        <div class="hero-copy">
+          <p class="eyebrow">LOCAL-FIRST NOTEBOOK <span class="version-chip" id="app-version">v0.5.12</span></p>
+          <h1>把赔率变成<br><span>能回看的数据。</span></h1>
+          <p class="hero-note">只保存你粘贴的文本。不抓取、不上传、不替你下注。</p>
+          <div class="hero-actions">
+            <button class="btn primary" id="hero-new" type="button">＋ 开始录入</button>
+            <button class="btn ghost" id="hero-data" type="button">数据管理</button>
+          </div>
+        </div>
+      </article>
+
+      <div class="stat-grid">
+        <button class="stat" type="button" data-stat="matches" aria-label="查看全部比赛">
+          <span>比赛</span><strong id="stat-matches">0</strong><small class="stat-cue">查看 ›</small>
+        </button>
+        <button class="stat" type="button" data-stat="pending" aria-label="查看待结算比赛">
+          <span>待结算</span><strong id="stat-pending">0</strong><small class="stat-cue">查看 ›</small>
+        </button>
+        <div class="stat stat-static" aria-label="时间点总数">
+          <span>时间点</span><strong id="stat-snapshots">0</strong>
+        </div>
+        <div class="stat stat-static" aria-label="市场总数">
+          <span>市场</span><strong id="stat-markets">0</strong>
+        </div>
+      </div>
+
+    <div class="list-block">
+
+    <div class="market-strip" id="market-strip" aria-label="市场汇总" hidden></div>
+
+    <section class="view" id="view-matches">
+      <div class="toolbar">
+        <label class="search">
+          <span class="sr-only">搜索比赛</span>
+          <input id="search-input" type="search" placeholder="搜索球队、联赛、场次" autocomplete="off">
+        </label>
+        <label class="select-wrap">
+          <span class="sr-only">状态筛选</span>
+          <select id="status-filter">
+            <option value="all">全部状态</option>
+            <option value="scheduled">待赛</option>
+            <option value="finished">已结算</option>
+            <option value="postponed">延期</option>
+            <option value="cancelled">取消</option>
+            <option value="abandoned">腰斩</option>
+          </select>
+        </label>
+      </div>
+      <div class="match-list" id="match-list"></div>
+      <div class="empty" id="empty-state" hidden>
+        <div class="empty-mark">＋</div>
+        <h2>还没有比赛</h2>
+        <p>先建一场比赛，再把竞彩页面上的赔率文本粘进来。</p>
+        <button class="btn primary" id="empty-new" type="button">新增第一场</button>
+      </div>
+    </section>
+
+    <section class="view" id="view-pending" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">SETTLEMENT QUEUE</p>
+          <h2>待结算</h2>
+        </div>
+        <p class="muted">未开赛、已开赛待录赛果、延期的比赛会出现在这里。</p>
+      </div>
+      <div class="match-list" id="pending-list"></div>
+      <div class="empty compact" id="pending-empty" hidden>
+        <h2>没有待结算</h2>
+        <p>所有该结算的比赛都处理完了。</p>
+      </div>
+    </section>
+
+    <section class="view" id="view-data" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">MATCH ARCHIVE</p>
+          <h2>数据</h2>
+        </div>
+        <p class="muted" id="data-count">只显示已录入赛果的比赛</p>
+      </div>
+      <details class="data-manage">
+        <summary>
+          <span>数据管理</span>
+          <span class="muted" id="last-export">还没有导出过</span>
+        </summary>
+        <div class="data-grid">
+          <article class="panel">
+            <h3>导出</h3>
+            <p>JSON 是完整备份；CSV 适合放到 Excel 或训练脚本里。</p>
+            <div class="button-row">
+              <button class="btn primary" id="export-json" type="button">导出 JSON</button>
+              <button class="btn" id="export-csv" type="button">导出 CSV</button>
+            </div>
+          </article>
+          <article class="panel">
+            <h3>导入</h3>
+            <p>JSON 是完整备份；CSV 会还原比赛、玩法和时间点。默认合并，不覆盖旧的市场数据。</p>
+            <div class="button-row">
+              <button class="btn" id="import-json" type="button">选择 JSON / CSV 文件</button>
+            </div>
+          </article>
+          <article class="panel">
+            <h3>数据口径</h3>
+            <dl class="facts">
+              <div><dt>应用版本</dt><dd id="data-version">v0.5.12</dd></div>
+              <div><dt>schemaVersion</dt><dd>1</dd></div>
+              <div><dt>存储</dt><dd>IndexedDB · 仅本机</dd></div>
+              <div><dt>赛果</dt><dd>90 分钟比分</dd></div>
+              <div><dt>让球</dt><dd>正数受让，负数让球</dd></div>
+            </dl>
+          </article>
+          <article class="panel health-panel">
+            <h3>数据健康</h3>
+            <div class="health-body" id="data-health-body"></div>
+          </article>
+          <article class="panel danger-panel">
+            <h3>清空</h3>
+            <p>会删除本机全部比赛、赔率和赛果。导出备份后再操作。</p>
+            <button class="btn danger" id="clear-data" type="button">清空本机数据</button>
+          </article>
+        </div>
+      </details>
+      <div class="filter-bar">
+        <label class="filter-field">
+          <span>赛季</span>
+          <select id="data-season"><option value="all">全部赛季</option></select>
+        </label>
+        <label class="filter-field">
+          <span>联赛</span>
+          <select id="data-league"><option value="all">全部联赛</option></select>
+        </label>
+        <label class="filter-field">
+          <span>轮次</span>
+          <select id="data-round"><option value="all">全部轮次</option></select>
+        </label>
+        <label class="filter-field">
+          <span>时间</span>
+          <select id="data-range">
+            <option value="all">全部时间</option>
+            <option value="30">近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+        </label>
+        <label class="filter-field filter-search">
+          <span>搜索</span>
+          <input id="data-search" type="search" placeholder="球队 / 场次" autocomplete="off">
+        </label>
+      </div>
+      <div class="match-list" id="data-list"></div>
+      <div class="empty compact" id="data-empty" hidden>
+        <h2>还没有已结算比赛</h2>
+        <p>在待结算里录入赛果后，比赛会进入这里。</p>
+      </div>
+
+    </section>
+
+    <section class="view" id="view-analysis" hidden>
+      <div class="section-head analysis-head">
+        <div>
+          <p class="eyebrow">READ-ONLY ANALYTICS</p>
+          <h2>分析</h2>
+        </div>
+        <p class="muted">只用已录入的竞彩数据做统计，不训练模型、不预测赛果。</p>
+      </div>
+      <div class="segmented" id="analysis-tabs" role="tablist" aria-label="分析分类">
+        <button class="segmented-item active" type="button" data-analysis-tab="overview" role="tab" aria-selected="true">概览</button>
+        <button class="segmented-item" type="button" data-analysis-tab="market" role="tab" aria-selected="false">市场</button>
+        <button class="segmented-item" type="button" data-analysis-tab="signal" role="tab" aria-selected="false">信号</button>
+        <button class="segmented-item" type="button" data-analysis-tab="results" role="tab" aria-selected="false">赛果</button>
+        <button class="segmented-item" type="button" data-analysis-tab="quality" role="tab" aria-selected="false">质量</button>
+        <button class="segmented-item" type="button" data-analysis-tab="leagues" role="tab" aria-selected="false">联赛</button>
+      </div>
+      <div class="filter-bar analysis-filters">
+        <label class="filter-field">
+          <span>赛季</span>
+          <select id="analysis-season"><option value="all">全部赛季</option></select>
+        </label>
+        <label class="filter-field">
+          <span>联赛</span>
+          <select id="analysis-league"><option value="all">全部联赛</option></select>
+        </label>
+        <label class="filter-field">
+          <span>轮次</span>
+          <select id="analysis-round"><option value="all">全部轮次</option></select>
+        </label>
+        <label class="filter-field filter-search">
+          <span>搜索</span>
+          <input id="analysis-search" type="search" placeholder="球队 / 联赛 / 赛季 / 轮次 / 编号" autocomplete="off">
+        </label>
+        <label class="filter-field">
+          <span>范围</span>
+          <select id="analysis-range">
+            <option value="all">全部时间</option>
+            <option value="30">近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>状态</span>
+          <select id="analysis-status">
+            <option value="settled">已结算</option>
+            <option value="all">全部</option>
+          </select>
+        </label>
+        <button class="btn ghost filter-reset" id="analysis-reset" type="button">重置</button>
+      </div>
+      <div class="analysis-market-wrap" id="analysis-market-wrap" hidden>
+        <div class="analysis-market-head">
+          <span>盘口</span>
+          <small>只作用于“信号 / 市场”统计；不选就是全部盘口</small>
+        </div>
+        <div class="market-chips" id="analysis-market-filter"></div>
+        <label class="filter-field analysis-strength-field">
+          <span>信号强度</span>
+          <select id="analysis-strength">
+            <option value="all">全部强度</option>
+            <option value="一边倒">一边倒</option>
+            <option value="明显倾向">明显倾向</option>
+            <option value="轻微倾向">轻微倾向</option>
+            <option value="三项接近">三项接近</option>
+          </select>
+        </label>
+      </div>
+      <nav class="metric-nav" id="analysis-metric-nav" aria-label="指标导航" hidden></nav>
+      <p class="analysis-scope" id="analysis-scope"></p>
+      <div id="analysis-body"></div>
+    </section>
+
+    <section class="view" id="view-capabilities" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">RESEARCH ROADMAP</p>
+          <h2>能力进度</h2>
+        </div>
+        <p class="muted">状态：未开放 → 样本已够 · 待接入 → 已接入。数据够不等于模型已启用。</p>
+      </div>
+      <div class="cap-summary" id="cap-summary"></div>
+      <div class="cap-quality" id="cap-quality"></div>
+      <div class="cap-grid" id="cap-grid"></div>
+      <p class="cap-footnote">收盘快照优先用 isClosing 标记；没有标记时，用停售前最后一个时间点作为代理。所有能力只做研究记录，不构成投注建议。</p>
+    </section>
+    </div>
+
+      <article class="bento-card health-card">
+        <div class="bento-head">
+          <div>
+            <p class="eyebrow">DATA HEALTH</p>
+            <h2>数据健康</h2>
+          </div>
+          <span class="health-pill" id="health-status">本机</span>
+        </div>
+        <div class="health-body" id="health-body"></div>
+      </article>
+
+      <article class="bento-card trend-card">
+        <div class="bento-head">
+          <div>
+            <p class="eyebrow">ODDS TREND</p>
+            <h2>赔率走势</h2>
+          </div>
+          <span class="muted" id="trend-meta">等待数据</span>
+        </div>
+        <div id="trend-body"></div>
+      </article>
+
+      <article class="bento-card quick-card">
+        <p class="eyebrow">QUICK START</p>
+        <h2>从一条赔率开始</h2>
+        <p>先建一场比赛，再把竞彩页面上的胜平负、让球或比分文本粘进来。所有数据只在本机。</p>
+        <div class="button-row">
+          <button class="btn primary" id="quick-new" type="button">＋ 新增比赛</button>
+          <button class="btn" id="quick-data" type="button">数据管理</button>
+          <button class="btn ghost" id="quick-export" type="button">导出 JSON</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>竞彩实验室 <span class="version-text" id="footer-version">v0.5.12</span></span>
+    <span>数据只在本机 · 研究记录，不构成投注建议</span>
+  </footer>
+
+  <nav class="bottom-nav" role="tablist" aria-label="主导航">
+    <button class="bottom-nav-item" id="nav-entry" type="button" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span>录入</span>
+    </button>
+    <button class="bottom-nav-item" data-view="pending" type="button" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span>待结算</span>
+      <b class="nav-count" id="nav-pending-count" hidden>0</b>
+    </button>
+    <button class="bottom-nav-item" data-view="data" type="button" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14M5 12h14M5 18.5h14"/><circle cx="8" cy="5.5" r="1"/><circle cx="8" cy="12" r="1"/><circle cx="8" cy="18.5" r="1"/></svg>
+      <span>数据</span>
+    </button>
+    <button class="bottom-nav-item" data-view="analysis" type="button" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V4.5M4 19.5h16M8 16v-4.5M13 16V7.5M18 16v-3"/></svg>
+      <span>分析</span>
+    </button>
+    <button class="bottom-nav-item" data-view="capabilities" type="button" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3.5"/><path d="M12 4.5V2M12 22v-2.5M4.5 12H2M22 12h-2.5"/></svg>
+      <span>能力</span>
+    </button>
+  </nav>
+
+  <button class="back-to-top" id="back-to-top" type="button" aria-label="回到顶部" title="回到顶部" hidden>↑</button>
+
+  <section class="subpage" id="page-new-match" hidden aria-label="新增比赛">
+    <form class="subpage-form" id="new-match-form">
+      <header class="subpage-head">
+        <button class="icon-btn" type="button" id="new-match-back" aria-label="返回">←</button>
+        <div class="subpage-title">
+          <p class="eyebrow">NEW MATCH</p>
+          <h1>录入比赛</h1>
+        </div>
+        <span class="page-badge">本机</span>
+      </header>
+      <div class="subpage-body narrow">
+        <p class="subpage-lead">先填比赛信息，下一步粘贴各玩法赔率。所有数据只保存在本机。</p>
+        <div class="form-grid">
+          <label class="field">
+            <span>主队</span>
+            <input name="home" required maxlength="40" placeholder="例如：巴库萨巴赫">
+          </label>
+          <label class="field">
+            <span>客队</span>
+            <input name="away" required maxlength="40" placeholder="例如：多特蒙德">
+          </label>
+          <label class="field">
+            <span>联赛</span>
+            <input name="league" maxlength="30" list="league-list" placeholder="例如：欧冠">
+            <datalist id="league-list">
+              <option value="欧冠"></option>
+              <option value="欧联"></option>
+              <option value="英超"></option>
+              <option value="西甲"></option>
+              <option value="意甲"></option>
+              <option value="德甲"></option>
+              <option value="法甲"></option>
+              <option value="日职"></option>
+              <option value="韩K联"></option>
+            </datalist>
+          </label>
+          <label class="field">
+            <span>赛季</span>
+            <input name="season" maxlength="12" inputmode="numeric" placeholder="例如：2627">
+          </label>
+          <label class="field">
+            <span>轮次</span>
+            <input name="roundLabel" maxlength="20" placeholder="例如：3">
+          </label>
+          <div class="field full">
+            <span>开赛时间</span>
+            <div class="dt-fields" data-dt-fields="new-kickoff">
+              <label class="dt-part"><input data-dt-part="year" type="text" inputmode="numeric" maxlength="4" placeholder="年" aria-label="开赛年份"><span>年</span></label>
+              <label class="dt-part"><input data-dt-part="month" type="text" inputmode="numeric" maxlength="2" placeholder="月" aria-label="开赛月份"><span>月</span></label>
+              <label class="dt-part"><input data-dt-part="day" type="text" inputmode="numeric" maxlength="2" placeholder="日" aria-label="开赛日期"><span>日</span></label>
+              <label class="dt-part"><input data-dt-part="hour" type="text" inputmode="numeric" maxlength="2" placeholder="时" aria-label="开赛小时"><span>时</span></label>
+              <label class="dt-part"><input data-dt-part="minute" type="text" inputmode="numeric" maxlength="2" placeholder="分" aria-label="开赛分钟"><span>分</span></label>
+            </div>
+            <input type="hidden" name="kickoff">
+            <small class="field-note">直接输入数字，例如 2026 / 10 / 24 / 13 / 00。</small>
+          </div>
+          <div class="field full">
+            <span>停售时间（可选）</span>
+            <div class="dt-fields" data-dt-fields="new-sales">
+              <label class="dt-part"><input data-dt-part="year" type="text" inputmode="numeric" maxlength="4" placeholder="年" aria-label="停售年份"><span>年</span></label>
+              <label class="dt-part"><input data-dt-part="month" type="text" inputmode="numeric" maxlength="2" placeholder="月" aria-label="停售月份"><span>月</span></label>
+              <label class="dt-part"><input data-dt-part="day" type="text" inputmode="numeric" maxlength="2" placeholder="日" aria-label="停售日期"><span>日</span></label>
+              <label class="dt-part"><input data-dt-part="hour" type="text" inputmode="numeric" maxlength="2" placeholder="时" aria-label="停售小时"><span>时</span></label>
+              <label class="dt-part"><input data-dt-part="minute" type="text" inputmode="numeric" maxlength="2" placeholder="分" aria-label="停售分钟"><span>分</span></label>
+            </div>
+            <input type="hidden" name="salesCutoffAt">
+            <small class="field-note">竞彩可能提前几小时停售；不填时按开赛时间估算，并标为“代理”。</small>
+          </div>
+          <label class="field">
+            <span>竞彩编号</span>
+            <input name="matchNum" maxlength="10" placeholder="例如：周二001">
+          </label>
+          <label class="field full">
+            <span>备注</span>
+            <input name="note" maxlength="120" placeholder="可选">
+          </label>
+        </div>
+        <div class="subpage-actions">
+          <button class="btn ghost" type="button" id="new-match-cancel">取消</button>
+          <button class="btn primary" type="submit">创建并录入赔率</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="subpage" id="page-odds" hidden aria-label="录入赔率">
+    <div class="subpage-form">
+      <header class="subpage-head">
+        <button class="icon-btn" type="button" id="odds-back" aria-label="返回">←</button>
+        <div class="subpage-title">
+          <p class="eyebrow">ODDS ENTRY</p>
+          <h1 id="odds-title">录入赔率</h1>
+          <p class="subpage-lead" id="odds-lead"></p>
+        </div>
+        <span class="page-badge" id="odds-count-badge">0 / 5</span>
+      </header>
+      <div class="subpage-body">
+        <div class="entry-match-strip" id="odds-match-strip"></div>
+        <p class="entry-hint">五项分开填。点开一张卡片，粘贴对应文本，先识别，再保存。没有内容的卡片可以空着。</p>
+        <div class="odds-cards" id="odds-cards"></div>
+      </div>
+      <footer class="entry-savebar">
+        <div>
+          <strong id="odds-summary">还没有识别</strong>
+          <small>保存后回到比赛详情</small>
+        </div>
+        <button class="btn primary" type="button" id="odds-save" disabled>保存到比赛</button>
+      </footer>
+    </div>
+  </section>
+
+  <section class="subpage" id="page-edit-match" hidden aria-label="编辑比赛">
+    <form class="subpage-form" id="edit-match-form">
+      <header class="subpage-head">
+        <button class="icon-btn" type="button" id="edit-back" aria-label="返回">←</button>
+        <div class="subpage-title">
+          <p class="eyebrow">EDIT MATCH</p>
+          <h1>编辑比赛</h1>
+          <p class="subpage-lead">改比赛信息或已有时间点。保存后会自动重算信号和结算。</p>
+        </div>
+        <span class="page-badge" id="edit-badge">本机</span>
+      </header>
+      <div class="subpage-body narrow">
+        <div class="form-grid">
+          <label class="field">
+            <span>主队</span>
+            <input name="home" required maxlength="40">
+          </label>
+          <label class="field">
+            <span>客队</span>
+            <input name="away" required maxlength="40">
+          </label>
+          <label class="field">
+            <span>联赛</span>
+            <input name="league" maxlength="30" list="league-list">
+          </label>
+          <label class="field">
+            <span>赛季</span>
+            <input name="season" maxlength="12" inputmode="numeric" placeholder="例如：2627">
+          </label>
+          <label class="field">
+            <span>轮次</span>
+            <input name="roundLabel" maxlength="20" placeholder="例如：3">
+          </label>
+          <div class="field full">
+            <span>开赛时间</span>
+            <div class="dt-fields" data-dt-fields="edit-kickoff">
+              <label class="dt-part"><input data-dt-part="year" type="text" inputmode="numeric" maxlength="4" placeholder="年" aria-label="开赛年份"><span>年</span></label>
+              <label class="dt-part"><input data-dt-part="month" type="text" inputmode="numeric" maxlength="2" placeholder="月" aria-label="开赛月份"><span>月</span></label>
+              <label class="dt-part"><input data-dt-part="day" type="text" inputmode="numeric" maxlength="2" placeholder="日" aria-label="开赛日期"><span>日</span></label>
+              <label class="dt-part"><input data-dt-part="hour" type="text" inputmode="numeric" maxlength="2" placeholder="时" aria-label="开赛小时"><span>时</span></label>
+              <label class="dt-part"><input data-dt-part="minute" type="text" inputmode="numeric" maxlength="2" placeholder="分" aria-label="开赛分钟"><span>分</span></label>
+            </div>
+            <input type="hidden" name="kickoff">
+          </div>
+          <div class="field full">
+            <span>停售时间（可选）</span>
+            <div class="dt-fields" data-dt-fields="edit-sales">
+              <label class="dt-part"><input data-dt-part="year" type="text" inputmode="numeric" maxlength="4" placeholder="年" aria-label="停售年份"><span>年</span></label>
+              <label class="dt-part"><input data-dt-part="month" type="text" inputmode="numeric" maxlength="2" placeholder="月" aria-label="停售月份"><span>月</span></label>
+              <label class="dt-part"><input data-dt-part="day" type="text" inputmode="numeric" maxlength="2" placeholder="日" aria-label="停售日期"><span>日</span></label>
+              <label class="dt-part"><input data-dt-part="hour" type="text" inputmode="numeric" maxlength="2" placeholder="时" aria-label="停售小时"><span>时</span></label>
+              <label class="dt-part"><input data-dt-part="minute" type="text" inputmode="numeric" maxlength="2" placeholder="分" aria-label="停售分钟"><span>分</span></label>
+            </div>
+            <input type="hidden" name="salesCutoffAt">
+          </div>
+          <label class="field">
+            <span>竞彩编号</span>
+            <input name="matchNum" maxlength="10">
+          </label>
+          <label class="field full">
+            <span>备注</span>
+            <input name="note" maxlength="120">
+          </label>
+        </div>
+
+        <div class="edit-section-head">
+          <div>
+            <p class="eyebrow">SNAPSHOTS</p>
+            <h2>已有时间点</h2>
+          </div>
+          <span class="muted" id="edit-snapshot-count"></span>
+        </div>
+        <div class="edit-add-tools">
+          <button class="btn ghost" type="button" id="edit-add-market">＋ 新增玩法</button>
+          <span class="muted">删除整个玩法用卡片右上角；新增后填赔率即可。</span>
+        </div>
+        <div class="edit-add-panel" id="edit-add-panel" hidden>
+          <label class="field">
+            <span>玩法</span>
+            <select id="edit-add-type">
+              <option value="spf">胜平负</option>
+              <option value="handicap">让球胜平负</option>
+              <option value="totals">总进球</option>
+              <option value="score">比分</option>
+              <option value="halfFull">半全场</option>
+            </select>
+          </label>
+          <label class="field" id="edit-add-line-wrap" hidden>
+            <span>让球数</span>
+            <input id="edit-add-line" type="text" inputmode="numeric" placeholder="例如 +1 / -1">
+          </label>
+          <div class="button-row">
+            <button class="btn primary" type="button" id="edit-add-confirm">添加空玩法</button>
+            <button class="btn ghost" type="button" id="edit-add-cancel">取消</button>
+          </div>
+        </div>
+        <div class="edit-markets" id="edit-markets"></div>
+
+        <label class="field full edit-reason" id="edit-reason-wrap" hidden>
+          <span>修改原因（已结算比赛必填）</span>
+          <textarea name="editReason" rows="2" maxlength="160" placeholder="例如：录入时看错一位"></textarea>
+        </label>
+        <p class="hint">删除整个玩法用卡片右上角；新增玩法后请填完赔率再保存。重复发布时间可以保存，分析页会提示；建议删掉多余的一条。</p>
+
+        <div class="subpage-actions">
+          <button class="btn ghost" type="button" id="edit-cancel">取消</button>
+          <button class="btn primary" type="submit">保存修改</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <dialog class="dialog" id="settle-dialog">
+    <form method="dialog" id="settle-form">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">RESULT</p>
+          <h2>录入赛果</h2>
+        </div>
+        <button class="icon-btn" value="cancel" type="submit" formnovalidate aria-label="关闭">×</button>
+      </div>
+      <p class="dialog-lead" id="settle-lead"></p>
+      <input type="hidden" name="matchId">
+      <div class="form-grid">
+        <label class="field full">
+          <span>全场比分</span>
+          <input name="fullScore" id="settle-full-score" type="text" inputmode="text" maxlength="9" placeholder="例如：2-1" autocomplete="off" required>
+          <small class="field-note">主队在前、客队在后；只填 90 分钟比分。</small>
+        </label>
+        <label class="field full">
+          <span>半场比分（可选）</span>
+          <input name="halfScore" id="settle-half-score" type="text" inputmode="text" maxlength="9" placeholder="例如：0-1" autocomplete="off">
+          <small class="field-note">不填时，半全场会保持待结算；填了会自动识别。</small>
+        </label>
+        <label class="field">
+          <span>状态</span>
+          <select name="status">
+            <option value="finished">已结束</option>
+            <option value="postponed">延期</option>
+            <option value="cancelled">取消</option>
+            <option value="abandoned">腰斩</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>备注</span>
+          <input name="note" maxlength="120" placeholder="可选">
+        </label>
+      </div>
+      <p class="hint">只填 90 分钟比分；加时和点球不改结算。半场不填，半全场会标为待结算。</p>
+      <p class="score-preview" id="score-preview" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button class="btn ghost" value="cancel" type="submit" formnovalidate>取消</button>
+        <button class="btn primary" value="default" type="submit">保存并结算</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog wide" id="detail-dialog">
+    <div id="detail-content"></div>
+  </dialog>
+
+  <input type="file" id="import-file" accept=".json,.csv,application/json,text/csv" hidden>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
