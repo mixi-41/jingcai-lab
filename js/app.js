@@ -43,6 +43,7 @@ import { buildMarketSignals } from './signal.js';
 import { buildImpliedMarkets } from './implied.js';
 import { buildAnalysisStats } from './stats.js';
 import { buildMatchClvRows, buildMatchMetricRows, buildMetricStats, buildSignalStats, listSignalMarkets } from './signal-stats.js';
+import { legacyToMatches } from './legacy-adapter.js';
 import { applyMatchEdit, validateEditedMarkets, validateEditFields } from './edit.js';
 import { APP_VERSION } from './version.js';
 
@@ -3417,12 +3418,29 @@ async function handleImportFile(event) {
   if (!file) return;
   try {
     const text = await file.text();
-    const isCsv = /\.csv$/i.test(file.name) || !text.trimStart().startsWith('{');
-    const payload = isCsv ? csvToSnapshot(text) : JSON.parse(text);
+    const trimmed = text.trimStart();
+    const isCsv = /\.csv$/i.test(file.name) || (!trimmed.startsWith('{') && !trimmed.startsWith('['));
+    let payload = isCsv ? csvToSnapshot(text) : JSON.parse(text);
+    let kind = isCsv ? 'CSV 明细' : 'JSON 备份';
+    let legacyWarnings = [];
+
+    // 旧版竞彩分析器导出的是 { records: [...] }，不是当前备份格式。
+    if (!isCsv && (Array.isArray(payload) || (Array.isArray(payload?.records) && !Array.isArray(payload?.matches)))) {
+      const converted = legacyToMatches(payload);
+      payload = { matches: converted.matches };
+      kind = '旧版分析器 JSON';
+      legacyWarnings = [
+        '旧版没有精确发布时间，时间点按开赛前近似生成。',
+        ...converted.warnings
+      ];
+    }
+
     const count = Array.isArray(payload.matches) ? payload.matches.length : 0;
-    if (!count) throw new Error('文件里没有 matches 数据');
-    const kind = isCsv ? 'CSV 明细' : 'JSON 备份';
-    if (!window.confirm(`导入 ${count} 场比赛（${kind}）？\n\n默认合并：同 ID 取较新赛果，同玩法合并时间点。`)) return;
+    if (!count) throw new Error('文件里没有可导入的比赛数据');
+    const warningText = legacyWarnings.length
+      ? `\n\n有 ${legacyWarnings.length} 条提示：\n${legacyWarnings.slice(0, 3).join('\n')}`
+      : '';
+    if (!window.confirm(`导入 ${count} 场比赛（${kind}）？\n\n默认合并：同 ID 取较新赛果，同玩法合并时间点。${warningText}`)) return;
     const result = await importSnapshot(payload, { mode: 'merge' });
     await refresh();
     const detail = result.errors.length ? `，${result.errors.length} 条失败` : '';

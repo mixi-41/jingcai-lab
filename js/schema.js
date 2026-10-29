@@ -164,7 +164,9 @@ export function createSnapshot({
   odds = {},
   rawText = '',
   isClosing = false,
-  source = 'paste'
+  source = 'paste',
+  legacyLabel = null,
+  legacySource = null
 } = {}) {
   const cleanOdds = {};
   for (const [key, value] of Object.entries(odds)) {
@@ -180,7 +182,9 @@ export function createSnapshot({
     isClosing: Boolean(isClosing),
     odds: cleanOdds,
     rawText: String(rawText || ''),
-    source
+    source,
+    legacyLabel: legacyLabel || null,
+    legacySource: legacySource || null
   };
 }
 
@@ -213,7 +217,9 @@ export function normalizeSnapshot(input = {}) {
       odds: input.odds || {},
       rawText: input.rawText || '',
       isClosing: Boolean(input.isClosing),
-      source: input.source || 'import'
+      source: input.source || 'import',
+      legacyLabel: input.legacyLabel || null,
+      legacySource: input.legacySource || null
     }),
     // 编辑/导入时保留快照身份，避免每次读取都换一个新 ID。
     snapshotId: input.snapshotId || createId('s')
@@ -314,6 +320,7 @@ export function normalizeMatch(input = {}) {
     result: input.result && typeof input.result === 'object' ? input.result : null,
     markets: Array.isArray(input.markets) ? input.markets.map(normalizeMarket) : [],
     audit: Array.isArray(input.audit) ? input.audit.filter((item) => item && item.action) : [],
+    legacy: input.legacy && typeof input.legacy === 'object' ? input.legacy : null,
     createdAt: input.createdAt || at,
     updatedAt: input.updatedAt || at,
     deletedAt: input.deletedAt || null
