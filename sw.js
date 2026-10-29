@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jingcai-lab-v54';
+const CACHE_NAME = 'jingcai-lab-v56';
 
 const APP_SHELL = [
   './',
@@ -16,6 +16,8 @@ const APP_SHELL = [
   './js/signal.js',
   './js/signal-stats.js',
   './js/implied.js',
+  './js/poisson.js',
+  './js/experimental.js',
   './js/stats.js',
   './js/edit.js',
   './js/legacy-adapter.js',

@@ -2,6 +2,12 @@ import { formatSelection } from './schema.js';
 
 export const TOTAL_KEYS = ['0', '1', '2', '3', '4', '5', '6', '7+'];
 
+export const HALF_FULL_KEYS = [
+  'home_home', 'home_draw', 'home_away',
+  'draw_home', 'draw_draw', 'draw_away',
+  'away_home', 'away_draw', 'away_away'
+];
+
 // 与录入页的比分顺序保持一致，包含三个“其他”选项。
 export const SCORE_KEYS = [
   '1:0', '2:0', '2:1', '3:0', '3:1', '3:2', '4:0', '4:1', '4:2', '5:0', '5:1', '5:2',
@@ -150,7 +156,56 @@ function buildScore(market, cutoff) {
     returnRatePct: normalized.returnRatePct,
     overroundPct: normalized.overroundPct,
     top: options.slice(0, 8),
+    allOptions: options,
     groups
+  };
+}
+
+function buildHalfFull(market, cutoff) {
+  const picked = latestSnapshot(market, cutoff, HALF_FULL_KEYS);
+  if (!picked.snapshot) return { market: 'halfFull', missing: true };
+
+  const normalized = normalize(picked.snapshot.odds, HALF_FULL_KEYS);
+  if (!picked.complete || !normalized) {
+    return {
+      market: 'halfFull',
+      incomplete: true,
+      recorded: HALF_FULL_KEYS.filter((key) => validOdd(picked.snapshot.odds?.[key])).length,
+      expected: HALF_FULL_KEYS.length,
+      sample: picked.sample,
+      latestAt: picked.snapshot.publishedAt || null
+    };
+  }
+
+  const sum = (...keys) => keys.reduce((total, key) => total + normalized.probabilities[key], 0);
+  const pct = (value) => round1(value * 100);
+  const options = HALF_FULL_KEYS
+    .map((key) => ({
+      key,
+      label: formatSelection('halfFull', key),
+      odds: Number(picked.snapshot.odds[key]),
+      probabilityPct: pct(normalized.probabilities[key])
+    }))
+    .sort((a, b) => b.probabilityPct - a.probabilityPct);
+
+  return {
+    market: 'halfFull',
+    complete: true,
+    sample: picked.sample,
+    latestAt: picked.snapshot.publishedAt || null,
+    returnRatePct: normalized.returnRatePct,
+    overroundPct: normalized.overroundPct,
+    options,
+    half: {
+      home: pct(sum('home_home', 'home_draw', 'home_away')),
+      draw: pct(sum('draw_home', 'draw_draw', 'draw_away')),
+      away: pct(sum('away_home', 'away_draw', 'away_away'))
+    },
+    full: {
+      home: pct(sum('home_home', 'draw_home', 'away_home')),
+      draw: pct(sum('home_draw', 'draw_draw', 'away_draw')),
+      away: pct(sum('home_away', 'draw_away', 'away_away'))
+    }
   };
 }
 
@@ -163,10 +218,12 @@ export function buildImpliedMarkets(match) {
   const cutoff = cutoffTime(match);
   const totalsMarket = markets.find((market) => market.type === 'totals');
   const scoreMarket = markets.find((market) => market.type === 'score');
+  const halfFullMarket = markets.find((market) => market.type === 'halfFull');
 
   const totals = totalsMarket ? buildTotals(totalsMarket, cutoff) : null;
   const score = scoreMarket ? buildScore(scoreMarket, cutoff) : null;
-  if (!totals && !score) return null;
+  const halfFull = halfFullMarket ? buildHalfFull(halfFullMarket, cutoff) : null;
+  if (!totals && !score && !halfFull) return null;
 
-  return { totals, score };
+  return { totals, score, halfFull };
 }

@@ -41,6 +41,8 @@ import {
 } from './capabilities.js';
 import { buildMarketSignals } from './signal.js';
 import { buildImpliedMarkets } from './implied.js';
+import { buildPoissonProjection } from './poisson.js';
+import { buildExperimentalModels, OUTCOME_LABELS } from './experimental.js';
 import { buildAnalysisStats } from './stats.js';
 import { buildMatchClvRows, buildMatchMetricRows, buildMetricStats, buildSignalStats, listSignalMarkets } from './signal-stats.js';
 import { legacyToMatches } from './legacy-adapter.js';
@@ -2566,7 +2568,7 @@ function signalCard(signal) {
 function impliedBlock(data) {
   if (!data || data.missing) return null;
 
-  const labels = { totals: '总进球 / 大小球', score: '比分 / 波胆' };
+  const labels = { totals: '总进球 / 大小球', score: '比分 / 波胆', halfFull: '半全场' };
   const title = labels[data.market] || data.market;
   if (data.incomplete) {
     return h('div', { class: 'implied-block' },
@@ -2602,6 +2604,21 @@ function impliedBlock(data) {
       h('p', { class: 'implied-foot' }, `${data.sample} 个时间点 · 抽水 ${data.overroundPct}%`));
   }
 
+  if (data.market === 'halfFull') {
+    const chips = h('div', { class: 'implied-chips half-full-chips' }, data.options.map((option) => h(
+      'span',
+      { class: 'implied-chip' },
+      h('span', {}, option.label),
+      h('b', {}, `${option.probabilityPct}%`)
+    )));
+    const aggregate = h('div', { class: 'half-full-groups' },
+      h('div', {}, h('span', {}, '半场'), h('b', {}, `主 ${data.half.home}% · 平 ${data.half.draw}% · 客 ${data.half.away}%`)),
+      h('div', {}, h('span', {}, '全场'), h('b', {}, `主 ${data.full.home}% · 平 ${data.full.draw}% · 客 ${data.full.away}%`))
+    );
+    return h('div', { class: 'implied-block' }, meta, chips, aggregate,
+      h('p', { class: 'implied-foot' }, `${data.sample} 个时间点 · 抽水 ${data.overroundPct}%`));
+  }
+
   const chips = h('div', { class: 'implied-chips' }, data.top.map((option) => h(
     'span',
     { class: 'implied-chip' },
@@ -2617,11 +2634,45 @@ function impliedBlock(data) {
     h('p', { class: 'implied-foot' }, `Top 8 · ${data.sample} 个时间点 · 抽水 ${data.overroundPct}%`));
 }
 
+function poissonBlock(data) {
+  if (!data) return null;
+  const outcomes = ['home', 'draw', 'away'];
+  return h('div', { class: 'poisson-block' },
+    h('div', { class: 'implied-block-head' },
+      h('h4', {}, '泊松反推'),
+      h('span', { class: 'implied-status' }, `λ ${data.lambdaHome} / ${data.lambdaAway}`)
+    ),
+    h('div', { class: 'poisson-kpis' },
+      h('div', {}, h('span', {}, '主队 λ'), h('b', {}, data.lambdaHome)),
+      h('div', {}, h('span', {}, '客队 λ'), h('b', {}, data.lambdaAway)),
+      h('div', {}, h('span', {}, '期望总进球'), h('b', {}, data.total))
+    ),
+    h('div', { class: 'poisson-top' }, data.top.map((item) => h(
+      'span',
+      { class: 'implied-chip' },
+      h('span', {}, item.label),
+      h('b', {}, `${item.probabilityPct}%`)
+    ))),
+    h('div', { class: 'implied-groups' },
+      ...outcomes.map((key) => h('span', {}, `${key === 'home' ? '主胜' : key === 'draw' ? '平局' : '客胜'} ${data.outcomes[key]}%`))
+    ),
+    h('div', { class: 'implied-ou' }, data.overUnder.map((row) => h(
+      'div',
+      { class: 'implied-ou-row' },
+      h('span', {}, `大小 ${row.line}`),
+      h('b', {}, `大 ${row.overPct}%`),
+      h('b', {}, `小 ${row.underPct}%`)
+    ))),
+    h('p', { class: 'implied-foot' }, `按比分盘概率反推 · ${data.sample} 个时间点`)
+  );
+}
+
 function impliedCard(match) {
   const data = buildImpliedMarkets(match);
   if (!data) return null;
-  const blocks = [impliedBlock(data.totals), impliedBlock(data.score)].filter(Boolean);
-  if (!blocks.length) return null;
+  const blocks = [impliedBlock(data.totals), impliedBlock(data.score), impliedBlock(data.halfFull)].filter(Boolean);
+  const poisson = buildPoissonProjection(data);
+  if (!blocks.length && !poisson) return null;
   return h('section', { class: 'implied-card' },
     h('div', { class: 'implied-head' },
       h('div', {},
@@ -2632,7 +2683,8 @@ function impliedCard(match) {
     ),
     h('p', { class: 'implied-lead' }, '把录入的赔率去掉抽水后换算成概率，只解释市场定价。'),
     h('div', { class: 'implied-grid' }, blocks),
-    h('p', { class: 'implied-note' }, '只对录入完整的玩法计算；缺项或停售后录入的赔率会被跳过。')
+    poisson ? poissonBlock(poisson) : null,
+    h('p', { class: 'implied-note' }, '只对录入完整的玩法计算；缺项或停售后录入的赔率会被跳过。泊松是从比分盘反推的平滑估计，不是预测。')
   );
 }
 
@@ -2752,6 +2804,59 @@ function clvCard(match) {
   );
 }
 
+function experimentalCard(match, history) {
+  const data = buildExperimentalModels(match, history);
+  if (!data) return null;
+  const outcomes = ['home', 'draw', 'away'];
+
+  const modelBlock = (title, block, renderBody) => h('div', { class: 'experiment-block' },
+    h('div', { class: 'experiment-block-head' },
+      h('h4', {}, title),
+      h('span', { class: 'experiment-badge' }, block ? (block.needMore ? `样本 ${block.sample}/5` : `样本 ${block.sample}`) : '数据不足')
+    ),
+    !block
+      ? h('p', { class: 'experiment-empty' }, '这场缺少两个以上完整胜平负时间点，暂不计算。')
+      : block.needMore
+        ? h('p', { class: 'experiment-empty' }, `至少需要 5 场已结算样本，当前 ${block.sample} 场。`)
+        : renderBody(block)
+  );
+
+  return h('section', { class: 'experimental-card' },
+    h('div', { class: 'experiment-head' },
+      h('div', {},
+        h('p', { class: 'eyebrow' }, 'EXPERIMENTAL · 原版公式'),
+        h('h3', {}, '实验模型')
+      ),
+      h('span', { class: 'experiment-warning' }, '小样本 · 非正式')
+    ),
+    h('p', { class: 'experiment-lead' }, '按旧版 App 的贝叶斯/AI 口径迁移；5 场起算、不参与正式统计，不代表可信预测。'),
+    h('div', { class: 'experiment-grid' },
+      modelBlock('贝叶斯', data.bayes, (block) => h('div', { class: 'experiment-rows' },
+        ...outcomes.map((key) => h('div', { class: 'experiment-row' },
+          h('span', {}, OUTCOME_LABELS[key]),
+          h('span', {}, `先验 ${roundPct(block.prior[key])}`),
+          h('span', {}, `似然 ${roundPct(block.like[key])}`),
+          h('b', {}, `后验 ${roundPct(block.posterior[key])}`)
+        ))
+      )),
+      modelBlock('AI 概率', data.ai, (block) => h('div', { class: 'experiment-rows' },
+        ...outcomes.map((key) => h('div', { class: 'experiment-row' },
+          h('span', {}, OUTCOME_LABELS[key]),
+          h('div', { class: 'experiment-bar' },
+            h('i', { style: `width:${block.probabilities[key] * 100}%` })
+          ),
+          h('b', {}, roundPct(block.probabilities[key]))
+        ))
+      ))
+    ),
+    h('p', { class: 'experiment-note' }, '贝叶斯=历史频率先验 × 评分似然；AI=15 维 softmax、5 场起、300 轮、无正则。两者都可能过拟合，只作研究记录。')
+  );
+}
+
+function roundPct(value) {
+  return `${(Number(value) * 100).toFixed(1)}%`;
+}
+
 function renderDetail(match) {
   const content = $('#detail-content');
   clear(content);
@@ -2761,6 +2866,8 @@ function renderDetail(match) {
   if (metrics) content.append(metrics);
   const clv = clvCard(match);
   if (clv) content.append(clv);
+  const experimental = experimentalCard(match, state.matches);
+  if (experimental) content.append(experimental);
   const implied = impliedCard(match);
   if (implied) content.append(implied);
 
